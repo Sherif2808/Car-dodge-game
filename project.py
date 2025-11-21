@@ -5,6 +5,38 @@ from OpenGL.GLU import *
 import random
 import time
 
+# ---------- Classes for Menus ----------
+class Button:
+    def __init__(self, text, xpos, ypos, width, height, font):
+        self.text = "Start"
+        self.xpos = xpos
+        self.ypos = ypos
+        self.width = width
+        self.height = height
+        self.font = font
+
+    def is_clicked(self, mouse_pos):
+        mx, my = mouse_pos
+        for event in pg.event.get():
+            if event.type == MOUSEBUTTONDOWN:
+                if (self.xpos <= mx <= self.xpos + self.width and
+                    self.ypos <= my <= self.ypos + self.height):
+                    return True
+        return False
+    
+    def draw(self, window):
+        glBegin(GL_QUADS)
+        glColor3f(0.2, 0.5, 0.8)
+        glVertex2f(self.xpos, self.ypos)
+        glVertex2f(self.xpos + self.width, self.ypos)
+        glVertex2f(self.xpos + self.width, self.ypos + self.height)
+        glVertex2f(self.xpos, self.ypos + self.height)
+        glEnd()
+
+    def draw_text(self, window):
+        
+    
+
 # ---------- Configuration ----------
 WIN_W, WIN_H = 900, 600
 GROUND_Y = -1.5
