@@ -4,6 +4,11 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 import random
 import time
+import datetime
+import os
+
+# ---------- User-uploaded file path (available locally) ----------
+UPLOADED_IMAGE_PATH = r"/mnt/data/c1434bc6-85de-4c0a-87cf-1487d18dc83d.png"
 
 # ---------- Configuration ----------
 WIN_W, WIN_H = 900, 600
@@ -16,10 +21,26 @@ PLAYER_SPEED = 10.0
 OBSTACLE_SIZE = 1.5
 OBSTACLE_SPAWN_Z = -60.0
 OBSTACLE_END_Z = 4.0
-SPAWN_INTERVAL = 1.0
-OBSTACLE_SPEED_START = 18.0
-OBSTACLE_SPEED_INC = 0.3
+
+# Default gameplay params (will be overridden by difficulty)
+SPAWN_INTERVAL_DEFAULT = 1.0
+OBSTACLE_SPEED_START_DEFAULT = 18.0
+OBSTACLE_SPEED_INC_DEFAULT = 0.3
 MAX_LIVES = 3
+
+# Track appearance
+ROAD_WIDTH = 14.0
+STRIP_LENGTH = 4.0
+
+# Leaderboard file (absolute path - set to your folder)
+LEADERBOARD_PATH = r"C:\Users\Sherif\OneDrive\Desktop\CC Project\CarDodge_Leaderboard.txt"
+LEADERBOARD_SHOW_COUNT = 10  # how many recent entries to show
+
+# Ensure leaderboard directory exists
+try:
+    os.makedirs(os.path.dirname(LEADERBOARD_PATH), exist_ok=True)
+except Exception:
+    pass
 
 # ---------- OpenGL setup ----------
 def init_gl():
@@ -28,7 +49,7 @@ def init_gl():
     glDepthFunc(GL_LEQUAL)
     glShadeModel(GL_SMOOTH)
 
-    # Enable blending for text transparency (important for HUD visibility)
+    # Enable blending for HUD/text transparency
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
@@ -44,42 +65,33 @@ def draw_cube(size=1.0):
     s = size / 2.0
     glBegin(GL_QUADS)
     # front
-    glNormal3f(0,0,1)
-    glVertex3f( s,  s,  s); glVertex3f(-s,  s,  s)
-    glVertex3f(-s, -s,  s); glVertex3f( s, -s,  s)
+    glNormal3f(0,0,1); glVertex3f( s,  s,  s); glVertex3f(-s,  s,  s); glVertex3f(-s, -s,  s); glVertex3f( s, -s,  s)
     # back
-    glNormal3f(0,0,-1)
-    glVertex3f( s, -s, -s); glVertex3f(-s, -s, -s)
-    glVertex3f(-s,  s, -s); glVertex3f( s,  s, -s)
+    glNormal3f(0,0,-1); glVertex3f( s, -s, -s); glVertex3f(-s, -s, -s); glVertex3f(-s,  s, -s); glVertex3f( s,  s, -s)
     # top
-    glNormal3f(0,1,0)
-    glVertex3f( s,  s, -s); glVertex3f(-s,  s, -s)
-    glVertex3f(-s,  s,  s); glVertex3f( s,  s,  s)
+    glNormal3f(0,1,0); glVertex3f( s,  s, -s); glVertex3f(-s,  s, -s); glVertex3f(-s,  s,  s); glVertex3f( s,  s,  s)
     # bottom
-    glNormal3f(0,-1,0)
-    glVertex3f( s, -s,  s); glVertex3f(-s, -s,  s)
-    glVertex3f(-s, -s, -s); glVertex3f( s, -s, -s)
+    glNormal3f(0,-1,0); glVertex3f( s, -s,  s); glVertex3f(-s, -s,  s); glVertex3f(-s, -s, -s); glVertex3f( s, -s, -s)
     # left
-    glNormal3f(-1,0,0)
-    glVertex3f(-s,  s,  s); glVertex3f(-s,  s, -s)
-    glVertex3f(-s, -s, -s); glVertex3f(-s, -s,  s)
+    glNormal3f(-1,0,0); glVertex3f(-s,  s,  s); glVertex3f(-s,  s, -s); glVertex3f(-s, -s, -s); glVertex3f(-s, -s,  s)
     # right
-    glNormal3f(1,0,0)
-    glVertex3f( s,  s, -s); glVertex3f( s,  s,  s)
-    glVertex3f( s, -s,  s); glVertex3f( s, -s, -s)
+    glNormal3f(1,0,0); glVertex3f( s,  s, -s); glVertex3f( s,  s,  s); glVertex3f( s, -s,  s); glVertex3f( s, -s, -s)
     glEnd()
 
-def draw_ground():
+# ---------- Ground ----------
+def draw_ground(track_offset=0.0):
+    y = GROUND_Y
+    # ground plane
     glColor3f(0.12, 0.12, 0.12)
     glBegin(GL_QUADS)
-    width, depth, y = 20.0, 120.0, GROUND_Y
+    width, depth = 20.0, 120.0
     glVertex3f(-width, y, -depth)
     glVertex3f(width, y, -depth)
     glVertex3f(width, y, 20.0)
     glVertex3f(-width, y, 20.0)
     glEnd()
 
-    # center road line
+    # center line
     glColor3f(0.9, 0.85, 0.2)
     glLineWidth(4.0)
     glBegin(GL_LINES)
@@ -151,147 +163,333 @@ def check_collision(player_x, obstacle):
     collide_z = dz <= (PLAYER_HALF_DEPTH + obstacle.size / 2.0)
     return collide_x and collide_z
 
+# ---------- Leaderboard helpers ----------
+def append_score_to_leaderboard(name, score):
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    safe_name = name.strip() if name and name.strip() else "Player"
+    line = f"{ts} | {safe_name} | {score}\n"
+    try:
+        with open(LEADERBOARD_PATH, "a", encoding="utf-8") as f:
+            f.write(line)
+        print("Score saved:", line.strip())
+    except Exception as e:
+        print("Failed to write leaderboard:", e)
+
+def read_leaderboard_lines():
+    try:
+        with open(LEADERBOARD_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+    return [l.strip() for l in lines if l.strip()]
+
 # ---------- Main game ----------
 def main():
     pg.init()
     pg.font.init()
     screen = pg.display.set_mode((WIN_W, WIN_H), DOUBLEBUF | OPENGL)
-    pg.display.set_caption("Car Dodge 3D Game")
+    pg.display.set_caption("CAR DODGE 3D")
     clock = pg.time.Clock()
-    font = pg.font.Font(None, 48)  # larger font for big GAME OVER
-    small_font = pg.font.Font(None, 30)
+
+    # Fonts
+    title_font = pg.font.Font(None, 72)
+    menu_font = pg.font.Font(None, 40)
+    hud_font = pg.font.Font(None, 28)
+    big_font = pg.font.Font(None, 56)
+    input_font = pg.font.Font(None, 36)
 
     init_gl()
     set_perspective()
 
+    # Game states
+    state = 'menu'  # 'menu', 'enter_name', 'difficulty', 'playing', 'leaderboard', 'game_over'
+    menu_index = 0            # for main menu (Play, Leaderboard)
+    difficulty_index = 1      # 0=Easy,1=Normal,2=Hard
+    difficulties = ['Easy', 'Normal', 'Hard']
+
+    # difficulty presets
+    difficulty_params = [
+        {"spawn_interval": 1.4, "obstacle_speed_start": 12.0, "obstacle_speed_inc": 0.18},  # easy
+        {"spawn_interval": 1.0, "obstacle_speed_start": 18.0, "obstacle_speed_inc": 0.3},   # normal
+        {"spawn_interval": 0.6, "obstacle_speed_start": 24.0, "obstacle_speed_inc": 0.45},  # hard
+    ]
+
+    # playing variables
     player_x = 0.0
     lives = MAX_LIVES
     score = 0
     obstacles = []
-    last_spawn = time.time()
-    obstacle_speed = OBSTACLE_SPEED_START
+    spawn_timer = 0.0
+    obstacle_speed = OBSTACLE_SPEED_START_DEFAULT
+    spawn_interval = SPAWN_INTERVAL_DEFAULT
+    obstacle_speed_inc = OBSTACLE_SPEED_INC_DEFAULT
+
     running = True
+    paused = False
     game_over = False
+
+    # input name variables
+    current_player_name = ""
+    name_max_len = 12
+
+    def start_game_with_difficulty(idx):
+        nonlocal player_x, lives, score, obstacles, spawn_timer, obstacle_speed, spawn_interval, obstacle_speed_inc, game_over, paused
+        params = difficulty_params[idx]
+        player_x = 0.0
+        lives = MAX_LIVES
+        score = 0
+        obstacles = []
+        spawn_timer = 0.0
+        obstacle_speed = params["obstacle_speed_start"]
+        spawn_interval = params["spawn_interval"]
+        obstacle_speed_inc = params["obstacle_speed_inc"]
+        game_over = False
+        paused = False
+        return player_x, lives, score, obstacles, spawn_timer, obstacle_speed, spawn_interval, obstacle_speed_inc, game_over, paused
 
     while running:
         dt = clock.tick(60) / 1000.0
 
-        # Input events
+        # events
         for event in pg.event.get():
-            if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
+            if event.type == QUIT:
                 running = False
+            elif event.type == KEYDOWN:
+                if event.key == K_ESCAPE:
+                    if state == 'menu':
+                        running = False
+                    else:
+                        state = 'menu'
 
-            # Restart logic (press R when game_over)
-            if game_over and event.type == KEYDOWN and event.key == K_r:
-                player_x = 0.0
-                lives = MAX_LIVES
-                score = 0
-                obstacles.clear()
-                last_spawn = time.time()
-                obstacle_speed = OBSTACLE_SPEED_START
-                game_over = False
+                # menu navigation
+                if state == 'menu':
+                    if event.key in (K_UP, K_w):
+                        menu_index = max(0, menu_index - 1)
+                    elif event.key in (K_DOWN, K_s):
+                        menu_index = min(1, menu_index + 1)
+                    elif event.key in (K_RETURN, K_KP_ENTER):
+                        if menu_index == 0:  # Play -> ask for name first
+                            current_player_name = ""
+                            state = 'enter_name'
+                        else:
+                            state = 'leaderboard'
 
-        # Gameplay updates
-        if not game_over:
+                # Name input screen
+                elif state == 'enter_name':
+                    if event.key == K_RETURN:
+                        # confirm name and go to difficulty selection
+                        state = 'difficulty'
+                        difficulty_index = 1
+                    elif event.key == K_BACKSPACE:
+                        current_player_name = current_player_name[:-1]
+                    else:
+                        # allow letters, numbers, spaces, dash, underscore
+                        ch = event.unicode
+                        if ch and len(current_player_name) < name_max_len:
+                            # basic filter: printable
+                            if ch.isprintable():
+                                current_player_name += ch
+
+                elif state == 'difficulty':
+                    if event.key in (K_UP, K_w):
+                        difficulty_index = max(0, difficulty_index - 1)
+                    elif event.key in (K_DOWN, K_s):
+                        difficulty_index = min(2, difficulty_index + 1)
+                    elif event.key in (K_RETURN, K_KP_ENTER):
+                        (player_x, lives, score, obstacles, spawn_timer, obstacle_speed,
+                         spawn_interval, obstacle_speed_inc, game_over, paused) = start_game_with_difficulty(difficulty_index)
+                        state = 'playing'
+                    elif event.key == K_ESCAPE:
+                        state = 'menu'
+
+                elif state == 'leaderboard':
+                    if event.key in (K_ESCAPE, K_RETURN):
+                        state = 'menu'
+
+                elif state == 'playing':
+                    if event.key == K_p:
+                        paused = not paused
+
+                elif state == 'game_over':
+                    if event.key == K_r:
+                        # restart with same difficulty
+                        (player_x, lives, score, obstacles, spawn_timer, obstacle_speed,
+                         spawn_interval, obstacle_speed_inc, game_over, paused) = start_game_with_difficulty(difficulty_index)
+                        state = 'playing'
+                    elif event.key in (K_ESCAPE, K_RETURN):
+                        state = 'menu'
+
+        # updates when playing
+        if state == 'playing' and not paused and not game_over:
             keys = pg.key.get_pressed()
             move = 0.0
             if keys[K_LEFT] or keys[K_a]:
                 move -= 1.0
             if keys[K_RIGHT] or keys[K_d]:
                 move += 1.0
-
             player_x += move * PLAYER_SPEED * dt
-            player_x = max(-8.0 + PLAYER_HALF_WIDTH, min(8.0 - PLAYER_HALF_WIDTH, player_x))
+            limit = ROAD_WIDTH/2.0 - PLAYER_HALF_WIDTH
+            player_x = max(-limit, min(limit, player_x))
 
-            now = time.time()
-            if now - last_spawn > SPAWN_INTERVAL:
-                last_spawn = now
-                x = random.uniform(-8.0 + OBSTACLE_SIZE, 8.0 - OBSTACLE_SIZE)
+            spawn_timer += dt
+            if spawn_timer > spawn_interval:
+                spawn_timer = 0.0
+                road_edge = ROAD_WIDTH/2.0 - OBSTACLE_SIZE
+                x = random.uniform(-road_edge, road_edge)
                 y = GROUND_Y + OBSTACLE_SIZE / 2.0
                 z = OBSTACLE_SPAWN_Z
-                color = (
-                    random.random() * 0.7 + 0.3,
-                    random.random() * 0.7 + 0.3,
-                    random.random() * 0.7 + 0.3
-                )
+                color = (random.random()*0.7 + 0.3, random.random()*0.7 + 0.3, random.random()*0.7 + 0.3)
                 obstacles.append(Obstacle(x, y, z, OBSTACLE_SIZE, color))
 
             dz = obstacle_speed * dt
-            obstacle_speed += OBSTACLE_SPEED_INC * dt
+            obstacle_speed += obstacle_speed_inc * dt
 
             remove_list = []
             for ob in obstacles:
                 ob.update(dz)
-
                 if check_collision(player_x, ob):
                     lives -= 1
                     remove_list.append(ob)
                     if lives <= 0:
                         game_over = True
-
                 elif ob.z > OBSTACLE_END_Z:
                     score += 10
                     remove_list.append(ob)
-
             for r in remove_list:
                 if r in obstacles:
                     obstacles.remove(r)
 
+            if game_over:
+                # save score with the name provided earlier (Option A)
+                append_score_to_leaderboard(current_player_name, score)
+                state = 'game_over'
+
         # ---------- Rendering ----------
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        # 3D scene
         glPushMatrix()
         draw_ground()
-
-        for ob in obstacles:
-            ob.draw()
-
-        # Player car
-        glPushMatrix()
-        glTranslatef(player_x, PLAYER_Y, PLAYER_Z)
-        glScalef(PLAYER_HALF_WIDTH * 2.0, 0.6, PLAYER_HALF_DEPTH * 2.0)
-        glColor3f(0.1, 0.6, 0.9)
-        draw_cube(1.0)
+        if state in ('playing', 'game_over'):
+            for ob in obstacles:
+                ob.draw()
+            glPushMatrix()
+            glTranslatef(player_x, PLAYER_Y, PLAYER_Z)
+            glScalef(PLAYER_HALF_WIDTH * 2.0, 0.6, PLAYER_HALF_DEPTH * 2.0)
+            glColor3f(0.1, 0.6, 0.9)
+            draw_cube(1.0)
+            glPopMatrix()
         glPopMatrix()
 
-        glPopMatrix()
-
-        # ---------- HUD (2D on top of 3D) ----------
-        # Ensure HUD renders on top: disable depth test & prevent depth writes, enable blending
+        # HUD & Menus
         glDisable(GL_DEPTH_TEST)
         glDepthMask(GL_FALSE)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-        # Score and lives (small)
-        score_tex, sw, sh = create_text_texture(small_font, f"Score: {score}", (255, 255, 255))
-        lives_tex, lw, lh = create_text_texture(small_font, f"Lives: {lives}", (255,200,80))
-        draw_text_ortho(score_tex, sw, sh, 12, 12)
-        draw_text_ortho(lives_tex, lw, lh, WIN_W - (lw + 12), 12)
+        # MENU
+        if state == 'menu':
+            title_tex, tw, th = create_text_texture(title_font, "CAR DODGE 3D", (255,255,255))
+            draw_text_ortho(title_tex, tw, th, WIN_W//2 - tw//2, WIN_H//2 - 120)
+            glDeleteTextures([title_tex])
 
-        # GAME OVER big centered (Option A)
-        if game_over:
-            msg1_tex, mw1, mh1 = create_text_texture(font, "GAME OVER", (255, 40, 40))   # big red
-            msg2_tex, mw2, mh2 = create_text_texture(small_font, "Press R to Restart", (255,255,255))  # white
+            opts = ["Play", "Leaderboard"]
+            for i, opt in enumerate(opts):
+                color = (255, 220, 40) if i == menu_index else (255,255,255)
+                tex, w, h = create_text_texture(menu_font, opt, color)
+                draw_text_ortho(tex, w, h, WIN_W//2 - w//2, WIN_H//2 - 30 + i*50)
+                glDeleteTextures([tex])
 
-            draw_text_ortho(msg1_tex, mw1, mh1, WIN_W//2 - mw1//2, WIN_H//2 - 50)
-            draw_text_ortho(msg2_tex, mw2, mh2, WIN_W//2 - mw2//2, WIN_H//2 + 10)
+            hint_tex, hw, hh = create_text_texture(hud_font, "Use Up/Down and Enter. Esc to Quit.", (200,200,200))
+            draw_text_ortho(hint_tex, hw, hh, WIN_W//2 - hw//2, WIN_H - 60)
+            glDeleteTextures([hint_tex])
 
-            # delete game over textures (safe after drawing this frame)
+        # ENTER NAME (Option A)
+        elif state == 'enter_name':
+            msg_tex, mw, mh = create_text_texture(title_font, "ENTER YOUR NAME", (255,255,255))
+            draw_text_ortho(msg_tex, mw, mh, WIN_W//2 - mw//2, WIN_H//2 - 120)
+            glDeleteTextures([msg_tex])
+
+            # show current typed name with cursor
+            display_name = current_player_name + ("_" if (time.time() % 1.0) < 0.6 else "")
+            name_tex, nw, nh = create_text_texture(input_font, display_name, (255, 220, 40))
+            draw_text_ortho(name_tex, nw, nh, WIN_W//2 - nw//2, WIN_H//2 - 20)
+            glDeleteTextures([name_tex])
+
+            hint_tex, hw, hh = create_text_texture(hud_font, "Type name (max 12 chars). Press Enter to continue.", (200,200,200))
+            draw_text_ortho(hint_tex, hw, hh, WIN_W//2 - hw//2, WIN_H - 60)
+            glDeleteTextures([hint_tex])
+
+        # DIFFICULTY
+        elif state == 'difficulty':
+            title_tex, tw, th = create_text_texture(title_font, "Select Difficulty", (255,255,255))
+            draw_text_ortho(title_tex, tw, th, WIN_W//2 - tw//2, WIN_H//2 - 130)
+            glDeleteTextures([title_tex])
+
+            for i, d in enumerate(difficulties):
+                color = (255,220,40) if i == difficulty_index else (255,255,255)
+                tex, w, h = create_text_texture(menu_font, d, color)
+                draw_text_ortho(tex, w, h, WIN_W//2 - w//2, WIN_H//2 - 20 + i*50)
+                glDeleteTextures([tex])
+
+            info_tex, iw, ih = create_text_texture(hud_font, "Esc to go back", (200,200,200))
+            draw_text_ortho(info_tex, iw, ih, WIN_W//2 - iw//2, WIN_H - 60)
+            glDeleteTextures([info_tex])
+
+        # LEADERBOARD
+        elif state == 'leaderboard':
+            title_tex, tw, th = create_text_texture(title_font, "LEADERBOARD", (255,255,255))
+            draw_text_ortho(title_tex, tw, th, WIN_W//2 - tw//2, 40)
+            glDeleteTextures([title_tex])
+
+            lines = read_leaderboard_lines()
+            show_lines = list(reversed(lines))[:LEADERBOARD_SHOW_COUNT]
+            if not show_lines:
+                empty_tex, ew, eh = create_text_texture(menu_font, "No scores yet", (200,200,200))
+                draw_text_ortho(empty_tex, ew, eh, WIN_W//2 - ew//2, WIN_H//2 - 20)
+                glDeleteTextures([empty_tex])
+            else:
+                start_y = 120
+                for i, ln in enumerate(show_lines):
+                    tex, w, h = create_text_texture(hud_font, f"{i+1}. {ln}", (230,230,230))
+                    draw_text_ortho(tex, w, h, 60, start_y + i*30)
+                    glDeleteTextures([tex])
+
+            hint_tex, hw, hh = create_text_texture(hud_font, "Esc or Enter to return to menu", (200,200,200))
+            draw_text_ortho(hint_tex, hw, hh, WIN_W//2 - hw//2, WIN_H - 60)
+            glDeleteTextures([hint_tex])
+
+        # PLAYING HUD
+        elif state == 'playing':
+            score_tex, sw, sh = create_text_texture(hud_font, f"Score: {score}", (255,255,255))
+            lives_tex, lw, lh = create_text_texture(hud_font, f"Lives: {lives}", (255,200,80))
+            draw_text_ortho(score_tex, sw, sh, 12, 12)
+            draw_text_ortho(lives_tex, lw, lh, WIN_W - (lw + 12), 12)
+            glDeleteTextures([score_tex, lives_tex])
+
+            if paused:
+                ptex, pw, ph = create_text_texture(big_font, "PAUSED", (255,255,255))
+                draw_text_ortho(ptex, pw, ph, WIN_W//2 - pw//2, WIN_H//2 - ph//2)
+                glDeleteTextures([ptex])
+
+        # GAME OVER
+        elif state == 'game_over':
+            score_tex, sw, sh = create_text_texture(hud_font, f"Final Score: {score}", (255,255,255))
+            draw_text_ortho(score_tex, sw, sh, WIN_W//2 - sw//2, WIN_H//2 + 40)
+            glDeleteTextures([score_tex])
+
+            msg1_tex, mw1, mh1 = create_text_texture(big_font, "GAME OVER", (255,40,40))
+            msg2_tex, mw2, mh2 = create_text_texture(menu_font, "Press R to Restart or Esc to Menu", (255,255,255))
+            draw_text_ortho(msg1_tex, mw1, mh1, WIN_W//2 - mw1//2, WIN_H//2 - 90)
+            draw_text_ortho(msg2_tex, mw2, mh2, WIN_W//2 - mw2//2, WIN_H//2 - 20)
             glDeleteTextures([msg1_tex, msg2_tex])
 
-        # restore depth writes and depth test for 3D
+        # restore 3D state
         glDepthMask(GL_TRUE)
         glEnable(GL_DEPTH_TEST)
-
-        # delete small hud textures
-        glDeleteTextures([score_tex, lives_tex])
 
         pg.display.flip()
 
     pg.quit()
-
 
 if __name__ == "__main__":
     main()
