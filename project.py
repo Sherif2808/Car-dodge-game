@@ -7,6 +7,7 @@ import random
 import time
 import datetime
 import os
+import math
 
 # ---------- User-uploaded file path (available locally) ----------
 UPLOADED_IMAGE_PATH = r"/mnt/data/c1434bc6-85de-4c0a-87cf-1487d18dc83d.png"
@@ -45,7 +46,7 @@ except Exception:
 
 # ---------- OpenGL setup ----------
 def init_gl():
-    glClearColor(0.15, 0.18, 0.22, 1.0)
+    glClearColor(0.2, 0.3, 0.5, 1.0)
     glEnable(GL_DEPTH_TEST)
     glDepthFunc(GL_LEQUAL)
     glShadeModel(GL_SMOOTH)
@@ -53,6 +54,16 @@ def init_gl():
     # Enable blending for HUD/text transparency
     glEnable(GL_BLEND)
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+    # This makes the cars look 3D instead of flat blocks
+    glEnable(GL_LIGHTING)
+    glEnable(GL_LIGHT0)
+    glEnable(GL_COLOR_MATERIAL)
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
+
+    # Sun position light
+    light_pos = [15.0, 15.0, 10.0, 1.0]
+    glLightfv(GL_LIGHT0, GL_POSITION, light_pos)
 
 def set_perspective():
     glMatrixMode(GL_PROJECTION)
@@ -79,26 +90,120 @@ def draw_cube(size=1.0):
     glNormal3f(1,0,0); glVertex3f( s,  s, -s); glVertex3f( s,  s,  s); glVertex3f( s, -s,  s); glVertex3f( s, -s, -s)
     glEnd()
 
-# ---------- Ground ----------
-def draw_ground(track_offset=0.0):
+# Builds a car using multiple scaled cubes (Body, Cabin, Wheels)
+def draw_car(color):
+    
+    # 1. Car Body
+    glPushMatrix()
+    glColor3f(*color)
+    glScalef(1.0, 0.4, 1.8) # Flatten and stretch
+    draw_cube(1.0)
+    glPopMatrix()
+
+    # 2. Cabin (Top)
+    glPushMatrix()
+    glColor3f(0.2, 0.2, 0.2) # Dark grey windows
+    glTranslatef(0.0, 0.35, -0.1) 
+    glScalef(0.8, 0.35, 0.8)
+    draw_cube(1.0)
+    glPopMatrix()
+
+    # 3. Wheels
+    wheel_color = (0.1, 0.1, 0.1)
+    wheel_positions = [(-0.55, -0.2, 0.5), (0.55, -0.2, 0.5), (-0.55, -0.2, -0.6), (0.55, -0.2, -0.6)]
+    for wx, wy, wz in wheel_positions:
+        glPushMatrix()
+        glColor3f(*wheel_color)
+        glTranslatef(wx, wy, wz)
+        glScalef(0.2, 0.3, 0.3)
+        draw_cube(1.0)
+        glPopMatrix()
+
+    # 4. Headlights
+    glPushMatrix()
+    glColor3f(1.0, 1.0, 0.0)
+    glTranslatef(0.0, 0.0, 0.91)
+    glScalef(0.8, 0.1, 0.05)
+    draw_cube(1.0)
+    glPopMatrix()
+
+
+# ---------- Racing Track ----------
+def draw_racing_track(track_offset):
     y = GROUND_Y
-    # ground plane
-    glColor3f(0.12, 0.12, 0.12)
+    
+    glDisable(GL_LIGHTING) # Disable lighting so ground colors pop
+    
+    # 1. Grass
+    glColor3f(0.1, 0.5, 0.1)
     glBegin(GL_QUADS)
-    width, depth = 20.0, 120.0
-    glVertex3f(-width, y, -depth)
-    glVertex3f(width, y, -depth)
-    glVertex3f(width, y, 20.0)
-    glVertex3f(-width, y, 20.0)
+    glVertex3f(-100, y, -100); glVertex3f(-ROAD_WIDTH/2, y, -100)
+    glVertex3f(-ROAD_WIDTH/2, y, 20); glVertex3f(-100, y, 20)
+    glVertex3f(ROAD_WIDTH/2, y, -100); glVertex3f(100, y, -100)
+    glVertex3f(100, y, 20); glVertex3f(ROAD_WIDTH/2, y, 20)
     glEnd()
 
-    # center line
-    glColor3f(0.9, 0.85, 0.2)
-    glLineWidth(4.0)
-    glBegin(GL_LINES)
-    glVertex3f(0, y + 0.01, -depth)
-    glVertex3f(0, y + 0.01, 20.0)
+    # 2. Road
+    glColor3f(0.2, 0.2, 0.2)
+    glBegin(GL_QUADS)
+    glVertex3f(-ROAD_WIDTH/2, y, -100); glVertex3f(ROAD_WIDTH/2, y, -100)
+    glVertex3f(ROAD_WIDTH/2, y, 20); glVertex3f(-ROAD_WIDTH/2, y, 20)
     glEnd()
+
+    # 3. Moving Rumble Strips
+    z_start = -100.0 + (track_offset % STRIP_LENGTH)
+    z = z_start
+    count = 0
+    while z < 20:
+        if count % 2 == 0: glColor3f(0.9, 0.1, 0.1) # Red
+        else: glColor3f(1.0, 1.0, 1.0) # White
+        
+        # Left & Right Strips
+        glBegin(GL_QUADS)
+        glVertex3f(-ROAD_WIDTH/2 - 1.0, y+0.02, z); glVertex3f(-ROAD_WIDTH/2, y+0.02, z)
+        glVertex3f(-ROAD_WIDTH/2, y+0.02, z + STRIP_LENGTH); glVertex3f(-ROAD_WIDTH/2 - 1.0, y+0.02, z + STRIP_LENGTH)
+        
+        glVertex3f(ROAD_WIDTH/2, y+0.02, z); glVertex3f(ROAD_WIDTH/2 + 1.0, y+0.02, z)
+        glVertex3f(ROAD_WIDTH/2 + 1.0, y+0.02, z + STRIP_LENGTH); glVertex3f(ROAD_WIDTH/2, y+0.02, z + STRIP_LENGTH)
+        glEnd()
+        z += STRIP_LENGTH
+        count += 1
+    
+    # 4. Center Line
+    glColor3f(1.0, 0.8, 0.0)
+    z = z_start
+    count = 0
+    while z < 20:
+        if count % 2 == 0:
+            glBegin(GL_QUADS)
+            glVertex3f(-0.2, y+0.02, z + 1.0); glVertex3f( 0.2, y+0.02, z + 1.0)
+            glVertex3f( 0.2, y+0.02, z + 3.0); glVertex3f(-0.2, y+0.02, z + 3.0)
+            glEnd()
+        z += STRIP_LENGTH
+        count += 1
+
+    glEnable(GL_LIGHTING)
+
+def draw_3d_sun():
+    # We keep lighting ENABLED here so the sphere reacts to light and looks 3D
+    # Or we can disable it and use just color.
+    # To make it look like a 3D ball, we use gluSphere.
+    
+    glPushMatrix()
+    glTranslatef(15.0, 15.0, -80.0) 
+    
+    # Sun Color
+    glColor3f(1.0, 0.9, 0.0) 
+    
+    # Create a Quadric object for the sphere
+    quadric = gluNewQuadric()
+    
+    # ### --- NEW: Draw a 3D Sphere instead of a flat disk ---
+    # Radius 8.0, 20 slices, 20 stacks
+    gluSphere(quadric, 8.0, 20, 20)
+    
+    gluDeleteQuadric(quadric)
+    glPopMatrix()
 
 # ---------- HUD text ----------
 def create_text_texture(font, text, color=(255,255,255)):
@@ -114,7 +219,9 @@ def create_text_texture(font, text, color=(255,255,255)):
     glBindTexture(GL_TEXTURE_2D, 0)
     return tex_id, w, h
 
+
 def draw_text_ortho(tex_id, w, h, x, y):
+    glDisable(GL_LIGHTING)
     glEnable(GL_TEXTURE_2D)
     glBindTexture(GL_TEXTURE_2D, tex_id)
     glColor3f(1,1,1)
@@ -148,13 +255,7 @@ class Obstacle:
 
     def update(self, dz):
         self.z += dz
-
-    def draw(self):
-        glPushMatrix()
-        glTranslatef(self.x, self.y, self.z)
-        glColor3f(*self.color)
-        draw_cube(self.size)
-        glPopMatrix()
+   
 
 # ---------- Collision ----------
 def check_collision(player_x, obstacle):
@@ -233,7 +334,8 @@ def main():
     obstacle_speed = OBSTACLE_SPEED_START_DEFAULT
     spawn_interval = SPAWN_INTERVAL_DEFAULT
     obstacle_speed_inc = OBSTACLE_SPEED_INC_DEFAULT
-
+    track_offset = 0.0
+    hit_flash_timer = 0.0
     running = True
     paused = False
     game_over = False
@@ -253,6 +355,8 @@ def main():
         obstacle_speed = params["obstacle_speed_start"]
         spawn_interval = params["spawn_interval"]
         obstacle_speed_inc = params["obstacle_speed_inc"]
+        track_offset = 0.0
+        hit_flash_timer = 0.0
         song1 = pg.mixer.Sound(params["music"])
         channel1.play(song1, loops=-1)
         game_over = False
@@ -342,7 +446,8 @@ def main():
             player_x += move * PLAYER_SPEED * dt
             limit = ROAD_WIDTH/2.0 - PLAYER_HALF_WIDTH
             player_x = max(-limit, min(limit, player_x))
-
+            if hit_flash_timer > 0:
+                hit_flash_timer -= dt
             spawn_timer += dt
             if spawn_timer > spawn_interval:
                 spawn_timer = 0.0
@@ -355,7 +460,7 @@ def main():
 
             dz = obstacle_speed * dt
             obstacle_speed += obstacle_speed_inc * dt
-
+            track_offset += dz
             remove_list = []
             for ob in obstacles:
                 ob.update(dz)
@@ -363,6 +468,7 @@ def main():
                     channel2.play(pg.mixer.Sound("car-crash-sound-376882.mp3"))
                     lives -= 1
                     remove_list.append(ob)
+                    hit_flash_timer = 1.0
                     if lives <= 0:
                         channel3.play(songgameover)
                         game_over = True
@@ -381,17 +487,28 @@ def main():
 
         # ---------- Rendering ----------
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-
+        draw_3d_sun()
         glPushMatrix()
-        draw_ground()
+        draw_racing_track(track_offset)
         if state in ('playing', 'game_over'):
             for ob in obstacles:
-                ob.draw()
+                glPushMatrix()
+                glTranslatef(ob.x, ob.y, ob.z)
+                glScalef(1.3, 1.3, 1.3) # Make car slightly bigger than box
+                draw_car(ob.color)
+                glPopMatrix()
             glPushMatrix()
             glTranslatef(player_x, PLAYER_Y, PLAYER_Z)
-            glScalef(PLAYER_HALF_WIDTH * 2.0, 0.6, PLAYER_HALF_DEPTH * 2.0)
-            glColor3f(0.1, 0.6, 0.9)
-            draw_cube(1.0)
+            glScalef(1.3, 1.3, 1.3)
+            
+            # ### --- NEW: Color Flash Logic ---
+            player_color = (0.1, 0.6, 0.9) # Normal Blue
+            if hit_flash_timer > 0:
+                # Toggle color every 0.1 seconds
+                if int(hit_flash_timer * 10) % 2 == 0:
+                    player_color = (1.0, 0.0, 0.0) # Flash Red
+            
+            draw_car(player_color)
             glPopMatrix()
         glPopMatrix()
 
