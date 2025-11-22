@@ -1,4 +1,5 @@
 import pygame as pg
+from pygame import mixer
 from pygame.locals import *
 from OpenGL.GL import *
 from OpenGL.GLU import *
@@ -33,7 +34,7 @@ ROAD_WIDTH = 14.0
 STRIP_LENGTH = 4.0
 
 # Leaderboard file (absolute path - set to your folder)
-LEADERBOARD_PATH = r"C:\Users\Sherif\OneDrive\Desktop\CC Project\CarDodge_Leaderboard.txt"
+LEADERBOARD_PATH = r"CarDodge_Leaderboard.txt"
 LEADERBOARD_SHOW_COUNT = 10  # how many recent entries to show
 
 # Ensure leaderboard directory exists
@@ -186,6 +187,7 @@ def read_leaderboard_lines():
 # ---------- Main game ----------
 def main():
     pg.init()
+    pg.mixer.init()
     pg.font.init()
     screen = pg.display.set_mode((WIN_W, WIN_H), DOUBLEBUF | OPENGL)
     pg.display.set_caption("CAR DODGE 3D")
@@ -198,6 +200,14 @@ def main():
     big_font = pg.font.Font(None, 56)
     input_font = pg.font.Font(None, 36)
 
+    # Channels For Sound and Music
+    channel1 = pg.mixer.Channel(0)
+    channel2 = pg.mixer.Channel(1)
+    channel3 = pg.mixer.Channel(2)
+    songmenu = pg.mixer.Sound("Animal Crossing Population Growing 7 P.M.ogg")
+    songgameover = pg.mixer.Sound("AudioCutter_Hades II - Time Cannot Be Stopped.ogg")
+
+
     init_gl()
     set_perspective()
 
@@ -209,9 +219,9 @@ def main():
 
     # difficulty presets
     difficulty_params = [
-        {"spawn_interval": 1.4, "obstacle_speed_start": 12.0, "obstacle_speed_inc": 0.18},  # easy
-        {"spawn_interval": 1.0, "obstacle_speed_start": 18.0, "obstacle_speed_inc": 0.3},   # normal
-        {"spawn_interval": 0.6, "obstacle_speed_start": 24.0, "obstacle_speed_inc": 0.45},  # hard
+        {"spawn_interval": 1.4, "obstacle_speed_start": 12.0, "obstacle_speed_inc": 0.18, "music": "Hotel.ogg"},  # easy
+        {"spawn_interval": 1.0, "obstacle_speed_start": 18.0, "obstacle_speed_inc": 0.3, "music": "Godspeed - Grace CST.ogg"},   # normal
+        {"spawn_interval": 0.6, "obstacle_speed_start": 24.0, "obstacle_speed_inc": 0.45, "music": "Death By Glamour.ogg"},  # hard
     ]
 
     # playing variables
@@ -243,6 +253,8 @@ def main():
         obstacle_speed = params["obstacle_speed_start"]
         spawn_interval = params["spawn_interval"]
         obstacle_speed_inc = params["obstacle_speed_inc"]
+        song1 = pg.mixer.Sound(params["music"])
+        channel1.play(song1, loops=-1)
         game_over = False
         paused = False
         return player_x, lives, score, obstacles, spawn_timer, obstacle_speed, spawn_interval, obstacle_speed_inc, game_over, paused
@@ -348,11 +360,14 @@ def main():
             for ob in obstacles:
                 ob.update(dz)
                 if check_collision(player_x, ob):
+                    channel2.play(pg.mixer.Sound("car-crash-sound-376882.mp3"))
                     lives -= 1
                     remove_list.append(ob)
                     if lives <= 0:
+                        channel3.play(songgameover)
                         game_over = True
                 elif ob.z > OBSTACLE_END_Z:
+                    channel2.play(pg.mixer.Sound("coin-recieved-230517.mp3"))
                     score += 10
                     remove_list.append(ob)
             for r in remove_list:
@@ -467,12 +482,14 @@ def main():
             glDeleteTextures([score_tex, lives_tex])
 
             if paused:
+                channel1.pause()
                 ptex, pw, ph = create_text_texture(big_font, "PAUSED", (255,255,255))
                 draw_text_ortho(ptex, pw, ph, WIN_W//2 - pw//2, WIN_H//2 - ph//2)
                 glDeleteTextures([ptex])
 
         # GAME OVER
         elif state == 'game_over':
+            channel1.pause()
             score_tex, sw, sh = create_text_texture(hud_font, f"Final Score: {score}", (255,255,255))
             draw_text_ortho(score_tex, sw, sh, WIN_W//2 - sw//2, WIN_H//2 + 40)
             glDeleteTextures([score_tex])
