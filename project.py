@@ -39,15 +39,27 @@ class Button:
         glVertex2f(self.xpos, self.ypos + self.height)
         glEnd()
 
-    def draw_text(self, window):
+    # def draw_text(self, window):
         #Render text using pygame font 
         #Transform Text to texture and draw on quad
         # 
 
 class Canvas:
+    Buttons = []
     
+    def __init__(self):
+        self.Buttons = []
+
+    def add_button(self, button):
+        self.Buttons.append(button)
     
-class 
+    '''def drawCanvas(self, window):
+
+
+        for button in self.Buttons:
+            button.draw(window)
+            print("Drawing button:", button.text)
+    '''
 # ---------- Configuration ----------
 WIN_W, WIN_H = 900, 600
 GROUND_Y = -1.5
