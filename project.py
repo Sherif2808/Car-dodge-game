@@ -8,7 +8,7 @@ import time
 # ---------- Classes for Menus ----------
 class Button:
     def __init__(self, text, xpos, ypos, width, height, font):
-        self.text = "Start"
+        self.text = text
         self.xpos = xpos
         self.ypos = ypos
         self.width = width
@@ -30,19 +30,9 @@ class Button:
                     return True
         return False
     
-    def draw(self, window):
-        glBegin(GL_QUADS)
-        glColor3f(0.2, 0.5, 0.8)
-        glVertex2f(self.xpos, self.ypos)
-        glVertex2f(self.xpos + self.width, self.ypos)
-        glVertex2f(self.xpos + self.width, self.ypos + self.height)
-        glVertex2f(self.xpos, self.ypos + self.height)
-        glEnd()
-
-    # def draw_text(self, window):
-        #Render text using pygame font 
-        #Transform Text to texture and draw on quad
-        # 
+    def draw(self):
+        Buttontext = create_text_texture(self.font, self.text, color=(255,255,255))
+        draw_text_ortho(Buttontext, self.width, self.height, self.xpos, self.ypos)
 
 class Canvas:
     Buttons = []
@@ -53,13 +43,12 @@ class Canvas:
     def add_button(self, button):
         self.Buttons.append(button)
     
-    '''def drawCanvas(self, window):
+    def drawCanvas(self, window):
 
 
         for button in self.Buttons:
-            button.draw(window)
-            print("Drawing button:", button.text)
-    '''
+            button.draw()
+            
 # ---------- Configuration ----------
 WIN_W, WIN_H = 900, 600
 GROUND_Y = -1.5
